@@ -311,6 +311,9 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
         elif freq == 2000:
             sample_num = 7    # 第七个样本
             suffix = 2
+        elif freq == 2000:
+            sample_num = 13    # 第13个样本
+            suffix = 3
             
         # 构建正确的 .npy 文件路径
         npy_path = f"{subject_name}\\{subject_name}\\case1_1\\sample_{sample_num}_{suffix}.npy"
