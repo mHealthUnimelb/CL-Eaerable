@@ -311,7 +311,7 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
         elif freq == 2000:
             sample_num = 7    # 第七个样本
             suffix = 2
-        elif freq == 2000:
+        elif freq == 1000:
             sample_num = 13    # 第13个样本
             suffix = 3
             
@@ -323,8 +323,8 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
             "reference_wav": npy_path,
             "original_segment": {
                 "wav_path": f"./Recordings\\{subject_name}\\case1_1.wav",
-                "start_time": 0.6 if freq == 3000 else 10.6,
-                "end_time": 1.6 if freq == 3000 else 11.6,
+                "start_time": 0.6 if freq == 3000 else 10.6 if freq == 2000 else 20.6,
+                "end_time": 1.4 if freq == 3000 else 11.4 if freq == 2000 else 21.4,
                 "case1_file": "case1_1.wav"
             }
         }
