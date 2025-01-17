@@ -95,7 +95,7 @@ def compute_response_for_tone(original, recorded, sr, f_tone):
         segment_recorded = filtered_recorded[i * segment_samples:(i + 1) * segment_samples]
         
         # 对每段进行FFT
-        window = hamming(len(segment_original))  # 添加窗函数减少频谱泄漏
+        window = hamming(len(segment_original))
         S = np.fft.fft(segment_original * window)
         R = np.fft.fft(segment_recorded * window)
         
@@ -182,6 +182,7 @@ def process_file(
             segment_filter = extract_tone_from_recording(audio_data, start_time, end_time, frequency=freq, sample_rate=sample_rate)
             
             # 获取对应的原始音频
+            # original_tone是case1 的baseline的audio, 比如3k 是
             # original_tone = tone_3k if freq == 3000 else tone_2k if freq == 2000 else tone_1k
             original_tone = generate_chirp(freq, freq, spl_db=50, duration=0.8, sample_rate=44100)
             
@@ -207,8 +208,14 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
     case1_mags = {3000: [], 2000: [], 1000: []}
     baseline_dict = {}
 
+    # 用来记录每个频率对应的 baseline 音频信息
+    baseline_detail = {
+        3000: {},
+        2000: {},
+        1000: {}
+    }
+
     # 缓存所有文件的 (case_number, last_num, freq_mags)
-    # freq_mags 再在最后统一写入 .npy（包括 baseline 差值）
     all_results = []
 
     # 先把 .wav 文件排序
@@ -229,7 +236,6 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
         if not filename.endswith('.wav'):
             continue
         
-        # 解析文件名，如 "case1_1.wav" -> case_number=1, last_num=1
         try:
             case_number = int(filename.split('_')[0][4])  # e.g. "case1" -> '1'
             last_num = int(filename.split('_')[1].split('.')[0])
@@ -264,22 +270,20 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
                     case1_mags[freq].append(mag)
                 sample_count += len(freq_mags)
         else:
-            # case2,3,4
             sample_count += len(freq_mags)
 
-    # ======== 第二步：计算 Baseline (case1) ========
-    for f_ in [3000, 2000, 1000]:
-        values = case1_mags[f_]
+    # ======== 第二步：计算 Baseline ========
+    for freq in [3000, 2000, 1000]:
+        values = case1_mags[freq]
         if len(values) == 0:
-            baseline_dict[f_] = 0
-            logging.warning(f"受试者 {subject_name} 在 freq={f_} 没有 case1 样本，baseline=0!")
+            baseline_dict[freq] = 0
+            logging.warning(f"受试者 {subject_name} 在 freq={freq}Hz 没有 case1 样本，baseline=0!")
         else:
-            baseline_dict[f_] = np.mean(values)
+            baseline_dict[freq] = np.mean(values)
     logging.info(f"受试者 {subject_name} baseline => {baseline_dict}")
 
     # ======== 第三步：存储所有样本数据 ========
-    for (filename, case_number, last_num, freq_mags, file_output_dir) in all_results:
-        # 所有case都计算与baseline的差值
+    for filename, case_number, last_num, freq_mags, file_output_dir in all_results:
         for idx, (freq, mag) in enumerate(freq_mags, start=1):
             baseline_val = baseline_dict.get(freq, 0.0)
             diff = abs(mag - baseline_val)
@@ -291,7 +295,53 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
                 npy_filename = f"sample_{(last_num-1)*6+idx}_{suffix}.npy"
                 
             out_path = os.path.join(file_output_dir, npy_filename)
-            np.save(out_path, diff)  # 所有case都存储差值
+            np.save(out_path, diff)
+
+    # ======== 第四步：输出 baseline.json ========
+    baseline_output_dir = os.path.join(output_dir, "baseline")
+    os.makedirs(baseline_output_dir, exist_ok=True)
+    baseline_json_path = os.path.join(baseline_output_dir, "baseline.json")
+    
+    info_for_json = {}
+    for freq in [3000, 2000, 1000]:  # 只输出 3k 和 2k
+        # 根据频率确定对应的 sample 编号和后缀
+        if freq == 3000:
+            sample_num = 1    # 第一个样本
+            suffix = 1
+        elif freq == 2000:
+            sample_num = 7    # 第七个样本
+            suffix = 2
+            
+        # 构建正确的 .npy 文件路径
+        npy_path = f"{subject_name}\\{subject_name}\\case1_1\\sample_{sample_num}_{suffix}.npy"
+        
+        info_for_json[str(freq)] = {
+            "value": baseline_dict.get(freq, 0.0),
+            "reference_wav": npy_path,
+            "original_segment": {
+                "wav_path": f"./Recordings\\{subject_name}\\case1_1.wav",
+                "start_time": 0.6 if freq == 3000 else 10.6,
+                "end_time": 1.6 if freq == 3000 else 11.6,
+                "case1_file": "case1_1.wav"
+            }
+        }
+
+    with open(baseline_json_path, 'w', encoding='utf-8') as f:
+        json.dump(info_for_json, f, ensure_ascii=False, indent=4)
+
+    # # ======== 清理1kHz相关文件 ========
+    # logging.info(f"清理1kHz相关文件...")
+    # for root, dirs, files in os.walk(output_dir):
+    #     for file in files:
+    #         if file.endswith("_3.wav") or file.endswith("_3.npy"):
+    #             file_path = os.path.join(root, file)
+    #             try:
+    #                 os.remove(file_path)
+    #                 logging.debug(f"已删除: {file_path}")
+    #             except Exception as e:
+    #                 logging.error(f"删除文件失败 {file_path}: {str(e)}")
+
+    logging.info(f"参与者 {subject_name} 的样本数: {sample_count}")
     return sample_count
 
 
