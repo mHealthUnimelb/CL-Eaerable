@@ -21,7 +21,7 @@ def extract_tone_from_recording(data, start_time, end_time, sample_rate=44100):
     end_sample = round(end_time * sample_rate)
     full_segment = data[start_sample:end_sample]
     
-    # 计算后0.8秒的起始点
+    # calculate the start point of the last 0.8s
     start_of_last_08s = len(full_segment) - int(0.8 * sample_rate)
     return full_segment[start_of_last_08s:]
 
@@ -78,80 +78,80 @@ def apply_bandpass_filter(data, lowcut, highcut, fs, order=4):
 
 def compute_response_for_tone(recorded, sr, f_tone):
     """
-    :param original: 原始音频（0.8s）
-    :param recorded: 录制音频（0.8s）
-    :param sr: 采样率
-    :param f_tone: 目标频率 fc (3000Hz, 2000Hz, 或 1000Hz)
-    :return: float类型的能量特征
+    :param original: original audio (0.8s)
+    :param recorded: recorded audio (0.8s)
+    :param sr: sample rate
+    :param f_tone: target frequency fc (3000Hz, 2000Hz, or 1000Hz)
+    :return: float type energy feature
     """
-    # 带通滤波
+    # bandpass filter
     bandwidth = 200  # Hz
     lowcut = f_tone - bandwidth/2
     highcut = f_tone + bandwidth/2
     filtered_signal = apply_bandpass_filter(recorded, lowcut, highcut, sr)
     
-    # 分段处理（20ms窗口）
+    # segment processing (20ms window)
     window_duration = 0.02  # 20ms
     window_samples = int(window_duration * sr)
     num_windows = len(filtered_signal) // window_samples
     
-    # 存储每个窗口的FFT结果
+    # store FFT results of each window
     magnitudes = []
     
     for i in range(num_windows):
-        # 提取窗口数据
+        # extract window data
         start = i * window_samples
         end = start + window_samples
         window_data = filtered_signal[start:end]
         
-        # 应用汉明窗
+        # apply hamming window
         window = hamming(len(window_data))
         windowed_data = window_data * window
         
-        # 计算FFT
+        # calculate FFT
         fft_result = np.fft.fft(windowed_data)
         freqs = np.fft.fftfreq(len(fft_result), 1/sr)
         
-        # 找到目标频率对应的索引
+        # find the index of the target frequency
         target_idx = np.argmin(np.abs(freqs - f_tone))
         
-        # 计算该窗口的能量
+        # calculate energy of the window
         magnitude = float(np.abs(fft_result[target_idx]) ** 2)
         magnitudes.append(magnitude)
     
-    # 计算平均能量 M²ᵢ,ⱼ
+    # calculate average energy M²ᵢ,ⱼ
     M_squared = float(np.mean(magnitudes))
     
     return M_squared
 
 def get_baseline(subject_dir):
     """
-    获取指定目录下的baseline值
-    :param subject_dir: 受试者目录路径（如 'A1' 或 'A2'）
-    :return: 包含3个频率baseline值的字典，如果获取失败则相应频率值为0
+    Get baseline value from the specified directory
+    :param subject_dir: subject directory path (e.g., 'A1' or 'A2')
+    :return: dictionary with baseline values for 3 frequencies, 0 if retrieval fails
     """
     # print(subject_dir)
-    # 初始化 baseline 字典
+    # initialize baseline dictionary
     baseline_dict = {
         3000: 0.0,
         2000: 0.0,
         1000: 0.0
     }
 
-    # 寻找并处理 case1_1.wav
+    # find and process case1_1.wav
     source_audio_path = os.path.join(subject_dir, 'case1_1.wav')
     if not os.path.isfile(source_audio_path):
-        logging.warning(f"找不到baseline文件: {source_audio_path}")
+        logging.warning(f"Cannot find baseline file: {source_audio_path}")
         return baseline_dict
 
     try:
         sample_rate, audio_data = read(source_audio_path)
         tone_3k, tone_2k, tone_1k, start_of_mark_tone, mark_tone = get_source_tone(source_audio_path)
         
-        # 找到 mark tone 位置
+        # find the mark tone position
         start_of_mt = find_start_of_mark_tone(audio_data, mark_tone, sample_rate)
         
-        # 提取并计算3个频率的baseline值
+        # extract and calculate baseline values for 3 frequencies
         # 3kHz - segment 1
         start_time = start_of_mt + 0.6
         segment_3k = extract_tone_from_recording(audio_data, start_time, start_time + 1, sample_rate)
@@ -167,10 +167,10 @@ def get_baseline(subject_dir):
         segment_1k = extract_tone_from_recording(audio_data, start_time, start_time + 1, sample_rate)
         baseline_dict[1000] = compute_response_for_tone(segment_1k, sample_rate, 1000)
         
-        # logging.info(f"成功获取baseline值: 3kHz={baseline_dict[3000]:.2f}, 2kHz={baseline_dict[2000]:.2f}, 1kHz={baseline_dict[1000]:.2f}")
+        # logging.info(f"Successfully get baseline value: 3kHz={baseline_dict[3000]:.2f}, 2kHz={baseline_dict[2000]:.2f}, 1kHz={baseline_dict[1000]:.2f}")
         
     except Exception as e:
-        logging.error(f"处理baseline文件时出错: {str(e)}")
+        logging.error(f"Error processing baseline file: {str(e)}")
     
     return baseline_dict
 
@@ -180,9 +180,9 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
     tone_3k, tone_2k, tone_1k, start_of_mark_tone, mark_tone = get_source_tone(source_audio_filename)
 
     # Get baseline
-    # 从文件路径中获取subject目录
+    # get subject directory from file path
     subject_dir = os.path.dirname(file_path)
-    # 获取baseline值
+    # get baseline value
     baseline_dict = get_baseline(subject_dir)
 
     cases = {
@@ -196,7 +196,7 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
         freqs = cases[1] * 6
         start_of_mark_tone = 0
         for i, freq in enumerate(freqs, start=1):
-            if freq == 1000:  # 跳过1k频率
+            if freq == 1000:  # skip 1k frequency
                 continue
                 
             if i % 6 == 1:
@@ -207,9 +207,9 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
             end_time = start_time + 1.0
             segment = extract_tone_from_recording(audio_data, start_time, end_time, sample_rate)
             magnitude = compute_response_for_tone(segment, sample_rate, freq)
-            baseline_diff = abs(magnitude - baseline_dict[freq])
+            baseline_diff = abs(magnitude / baseline_dict[freq])
 
-            # 在保存之前应用带通滤波
+            # apply bandpass filter before saving
             bandwidth = 200  # Hz
             lowcut = freq - bandwidth/2
             highcut = freq + bandwidth/2
@@ -222,7 +222,7 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
             np.save(os.path.join(output_dir, npy_filename), np.array([baseline_diff]))
     else:
         freq = cases[case_number][last_num]
-        if freq == 1000:  # 跳过1k频率
+        if freq == 1000:  # skip 1k frequency
             return
             
         tone = tone_3k if freq == 3000 else tone_2k
@@ -232,9 +232,9 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
             end_time = start_time + 1.0
             segment = extract_tone_from_recording(audio_data, start_time, end_time, sample_rate)
             magnitude = compute_response_for_tone(segment, sample_rate, freq)
-            baseline_diff = abs(magnitude - baseline_dict[freq])
+            baseline_diff = abs(magnitude / baseline_dict[freq])
 
-            # 在保存之前应用带通滤波
+            # apply bandpass filter before saving
             bandwidth = 200  # Hz
             lowcut = freq - bandwidth/2
             highcut = freq + bandwidth/2
@@ -247,7 +247,7 @@ def process_file(file_path, output_dir, case_number, last_num, num_samples=6):
 
 def process_subject_directory(subject_dir, output_dir, num_samples=6):
     subject_name = os.path.basename(subject_dir)
-    logging.info(f"处理受试者: {subject_name}")
+    logging.info(f"Processing subject: {subject_name}")
     sample_count = 0
 
     for filename in sorted(os.listdir(subject_dir)):
@@ -255,11 +255,11 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
             try:
                 case_number = int(filename.split('_')[0][4])
             except ValueError:
-                logging.warning(f"跳过非法文件名: {filename}")
+                logging.warning(f"Skip invalid file name: {filename}")
                 continue
             
             if case_number not in [1, 2, 3, 4]:
-                logging.info(f"跳过非 case1-4 的文件: {filename}")
+                logging.info(f"Skip non-case1-4 file: {filename}")
                 continue
             
             file_path = os.path.join(subject_dir, filename)
@@ -271,7 +271,7 @@ def process_subject_directory(subject_dir, output_dir, num_samples=6):
             process_file(file_path, file_output_dir, case_number, last_num, num_samples)
             
             if case_number == 1:
-                sample_count += 18  # case1 有18个样本
+                sample_count += 18  # case1 has 18 samples
             else:
                 sample_count += num_samples
 
@@ -287,7 +287,7 @@ def process_all_participants(root_dir, output_root_dir, num_samples=6):
             os.makedirs(participant_output_dir, exist_ok=True)
             participant_sample_count = process_subject_directory(participant_dir, participant_output_dir, num_samples)
             total_sample_count += participant_sample_count
-            logging.info(f"参与者 {participant} 的样本数: {participant_sample_count}")
+            logging.info(f"Participant {participant} has {participant_sample_count} samples")
         logging.info("")
     
     return total_sample_count
@@ -297,4 +297,4 @@ if __name__ == "__main__":
     output_root_directory = './dataset_2k3k_withbandpass_extrafeatures'
     total_samples = process_all_participants(root_directory, output_root_directory, num_samples=6)
     
-    logging.info(f"处理完成。总样本数: {total_samples}")    
+    logging.info(f"Processing completed. Total samples: {total_samples}")    
